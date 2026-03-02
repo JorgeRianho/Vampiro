@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#d65b2f" />
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <title>Vampiro Multiplayer</title>
+  <style>
+    :root {
+      --bg: #f6f3ea;
+      --card: #ffffff;
+      --text: #201815;
+      --primary: #d65b2f;
+      --secondary: #3f7566;
+      --muted: #7a6f69;
+      --border: #e7ddd4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #fff8eb, var(--bg));
+      color: var(--text);
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100dvh;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 4px 18px rgba(32, 24, 21, 0.06);
+    }
+    h1 { margin: 4px 0 10px; font-size: 1.5rem; }
+    h2 { margin: 0 0 10px; font-size: 1.1rem; }
+    p { margin: 6px 0; }
+    .muted { color: var(--muted); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, button, textarea {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 0.98rem;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      border: 0;
+      color: #fff;
+      background: var(--primary);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.secondary { background: var(--secondary); }
+    button.ghost {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .hidden { display: none; }
+    .pill {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #f2ebe5;
+      border: 1px solid var(--border);
+      font-size: .86rem;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .players { display: grid; gap: 8px; }
+    .player {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .feed { max-height: 220px; overflow: auto; display: grid; gap: 6px; }
+    .event {
+      border-left: 4px solid var(--secondary);
+      background: #faf7f3;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: .92rem;
+    }
+    .danger { color: #9f2b2b; font-weight: 700; }
+    .ok { color: #1f6f4c; font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Vampiro Multiplayer</h1>
+      <p class="muted">Host crea sala, comparte enlace/código y cada jugador usa su móvil.</p>
+      <div class="row" style="margin-bottom:8px;">
+        <input id="publicBaseUrl" placeholder="URL compartida (ej: http://192.168.1.34:8000)" />
+      </div>
+      <p id="netHint" class="muted"></p>
+      <div class="row">
+        <button id="btnCreate">Crear partida</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input id="joinCode" placeholder="Código sala (ej: A1B2C3)" />
+        <button class="secondary" id="btnJoin">Unirme</button>
+      </div>
+      <p id="topMsg" class="muted"></p>
+    </div>
+
+    <div id="roomCard" class="card hidden">
+      <h2>Sala <span id="roomCode" class="mono"></span></h2>
+      <p>Fase: <span id="phase" class="pill"></span></p>
+      <p id="joinLinkWrap" class="muted hidden">Enlace: <a id="joinLink" target="_blank"></a></p>
+      <p id="hostHint" class="muted hidden">Comparte el enlace o código de sala.</p>
+    </div>
+
+    <div id="hostSetupCard" class="card hidden">
+      <h2>Host: Jugadores y pruebas</h2>
+      <p class="muted">Nombres (uno por línea):</p>
+      <textarea id="playersText" placeholder="Ana&#10;Luis&#10;Carlos"></textarea>
+      <div class="row">
+        <button id="btnSavePlayers">Guardar jugadores</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input id="challengeCount" type="number" min="1" value="3" placeholder="Pruebas por jugador" />
+        <button class="secondary" id="btnCollect">Pedir pruebas</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnStartGame">Iniciar partida</button>
+      </div>
+      <p id="hostMsg" class="muted"></p>
+    </div>
+
+    <div id="claimCard" class="card hidden">
+      <h2>Selecciona quién eres</h2>
+      <div id="playersList" class="players"></div>
+      <p id="claimMsg" class="muted"></p>
+    </div>
+
+    <div id="challengesCard" class="card hidden">
+      <h2>Tus pruebas</h2>
+      <p class="muted">Escribe las pruebas que propones para otros jugadores.</p>
+      <textarea id="myChallenges" placeholder="Una prueba por línea"></textarea>
+      <div class="row">
+        <button id="btnSendChallenges">Enviar pruebas</button>
+      </div>
+      <p id="challengesMsg" class="muted"></p>
+    </div>
+
+    <div id="missionCard" class="card hidden">
+      <h2>Tu misión</h2>
+      <p>Jugador: <span id="meName" class="pill"></span></p>
+      <p>Estado: <span id="meAlive" class="pill"></span></p>
+      <p>Objetivo actual: <strong id="targetName">-</strong></p>
+      <p>Prueba asignada: <strong id="missionChallenge">-</strong></p>
+      <div class="row">
+        <button id="btnRefreshMission" class="ghost">Actualizar misión</button>
+        <button id="btnConfirmKill">Confirmar asesinato</button>
+      </div>
+      <p id="missionMsg" class="muted"></p>
+    </div>
+
+    <div class="card">
+      <h2>Jugadores</h2>
+      <div id="publicPlayers" class="players"></div>
+    </div>
+
+    <div class="card">
+      <h2>Avisos de partida</h2>
+      <div id="feed" class="feed"></div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      roomCode: new URLSearchParams(location.search).get('room') || '',
+      hostToken: localStorage.getItem('vamp_host_token') || '',
+      sessionToken: localStorage.getItem('vamp_session_token') || '',
+      publicBaseUrl: localStorage.getItem('vamp_public_base_url') || '',
+      me: null,
+      room: null,
+      ws: null,
+    };
+
+    const el = (id) => document.getElementById(id);
+
+    function setMsg(id, text, good = false) {
+      const node = el(id);
+      node.textContent = text || '';
+      node.className = good ? 'ok' : 'muted';
+    }
+
+    async function api(path, method = 'GET', body = null) {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Error en la petición');
+      return data;
+    }
+
+    function sanitizeBaseUrl(raw) {
+      const value = (raw || '').trim().replace(/\/+$/, '');
+      if (!value) return '';
+      try {
+        const u = new URL(value);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+        return u.origin;
+      } catch {
+        return '';
+      }
+    }
+
+    function isLocalHostName(hostname) {
+      return hostname === 'localhost' || hostname === '127.0.0.1';
+    }
+
+    function updateNetworkHint() {
+      const raw = el('publicBaseUrl').value || '';
+      const sanitized = sanitizeBaseUrl(raw);
+      if (!sanitized) {
+        el('netHint').textContent = 'Define una URL compartida valida (http://IP:PUERTO o https://dominio).';
+        return;
+      }
+
+      const hostname = new URL(sanitized).hostname;
+      if (isLocalHostName(hostname)) {
+        el('netHint').textContent = 'Esa URL usa localhost; solo funciona en tu propio dispositivo.';
+      } else {
+        el('netHint').textContent = 'URL compartida valida para otros dispositivos.';
+      }
+    }
+
+    function renderPlayersList() {
+      const list = el('playersList');
+      list.innerHTML = '';
+      if (!state.room) return;
+
+      for (const p of state.room.players) {
+        const card = document.createElement('div');
+        card.className = 'player';
+
+        const info = document.createElement('div');
+        const aliveMark = state.room.phase === 'active' || state.room.phase === 'finished'
+          ? (p.alive ? ' | vivo' : ' | eliminado')
+          : '';
+        info.textContent = `${p.name}${p.claimed ? ' | conectado' : ''}${aliveMark}`;
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Soy yo';
+        btn.disabled = p.claimed && (!state.me || state.me.player_id !== p.id);
+        btn.onclick = async () => {
+          try {
+            const data = await api(`/api/rooms/${state.roomCode}/players/claim`, 'POST', {
+              session_token: state.sessionToken,
+              player_id: p.id,
+            });
+            state.room = data.room;
+            state.me = data.me;
+            setMsg('claimMsg', `Has seleccionado a ${p.name}`, true);
+            renderAll();
+          } catch (e) {
+            setMsg('claimMsg', e.message);
+          }
+        };
+
+        card.appendChild(info);
+        card.appendChild(btn);
+        list.appendChild(card);
+      }
+    }
+
+    function renderPublicPlayers() {
+      const cont = el('publicPlayers');
+      cont.innerHTML = '';
+      if (!state.room) return;
+      for (const p of state.room.players) {
+        const row = document.createElement('div');
+        row.className = 'player';
+        row.innerHTML = `<div>${p.name}</div><div class="muted">${p.claimed ? 'conectado' : 'sin conectar'}${state.room.phase !== 'lobby' ? (p.submitted_challenges ? ' | pruebas ok' : ' | sin pruebas') : ''}${(state.room.phase === 'active' || state.room.phase === 'finished') ? (p.alive ? ' | vivo' : ' | eliminado') : ''}</div>`;
+        cont.appendChild(row);
+      }
+    }
+
+    function renderFeed() {
+      const feed = el('feed');
+      feed.innerHTML = '';
+      if (!state.room) return;
+      for (const ev of state.room.events) {
+        const item = document.createElement('div');
+        item.className = 'event';
+        item.textContent = `[${new Date(ev.timestamp).toLocaleTimeString()}] ${ev.message}`;
+        if (ev.type === 'kill') item.classList.add('danger');
+        if (ev.type === 'game_finished') item.classList.add('ok');
+        feed.appendChild(item);
+      }
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function renderMission() {
+      if (!state.me) return;
+      el('meName').textContent = state.me.player_name || '-';
+      el('meAlive').textContent = state.me.alive === null ? '-' : (state.me.alive ? 'vivo' : 'eliminado');
+      el('targetName').textContent = state.me.target_name || '-';
+      el('missionChallenge').textContent = state.me.challenge || '-';
+
+      el('btnConfirmKill').disabled = !(state.room?.phase === 'active' && state.me.alive && state.me.target_name);
+    }
+
+    function renderAll() {
+      const hasRoom = !!state.roomCode;
+      el('roomCard').classList.toggle('hidden', !hasRoom || !state.room);
+      el('hostSetupCard').classList.toggle('hidden', !hasRoom || !state.hostToken || !state.room);
+      el('claimCard').classList.toggle('hidden', !hasRoom || !state.room);
+
+      if (!state.room) return;
+
+      el('roomCode').textContent = state.roomCode;
+      el('phase').textContent = state.room.phase;
+
+      const isHost = !!state.hostToken;
+      el('joinLinkWrap').classList.toggle('hidden', !isHost);
+      el('hostHint').classList.toggle('hidden', !isHost);
+
+      if (isHost) {
+        const base = state.publicBaseUrl || location.origin;
+        const joinUrl = `${base}/?room=${state.roomCode}`;
+        el('joinLink').textContent = joinUrl;
+        el('joinLink').href = joinUrl;
+      }
+
+      const collecting = state.room.phase === 'collecting_challenges';
+      const active = state.room.phase === 'active' || state.room.phase === 'finished';
+
+      el('challengesCard').classList.toggle('hidden', !collecting || !state.me?.claimed);
+      el('missionCard').classList.toggle('hidden', !active || !state.me?.claimed);
+
+      renderPlayersList();
+      renderPublicPlayers();
+      renderFeed();
+      renderMission();
+
+      if (state.room.winner_name) {
+        setMsg('missionMsg', `Ganador: ${state.room.winner_name}`, true);
+      }
+    }
+
+    function connectWs() {
+      if (!state.roomCode || !state.sessionToken) return;
+      if (state.ws) state.ws.close();
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const url = `${proto}://${location.host}/ws/${state.roomCode}?session_token=${state.sessionToken}`;
+      state.ws = new WebSocket(url);
+      state.ws.onmessage = (evt) => {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'room_update') {
+          state.room = data.room;
+          state.me = data.me;
+          renderAll();
+        }
+      };
+      state.ws.onclose = () => setTimeout(connectWs, 1500);
+    }
+
+    async function loadCurrentState() {
+      if (!state.roomCode || !state.sessionToken) return;
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/me?session_token=${state.sessionToken}`);
+        state.room = data.room;
+        state.me = data.me;
+        renderAll();
+      } catch (e) {
+        setMsg('topMsg', e.message);
+      }
+    }
+
+    el('btnCreate').onclick = async () => {
+      try {
+        const rawBase = el('publicBaseUrl').value || '';
+        const sharedBase = sanitizeBaseUrl(rawBase) || sanitizeBaseUrl(location.origin);
+        if (!sharedBase) {
+          return setMsg('topMsg', 'URL compartida invalida');
+        }
+        state.publicBaseUrl = sharedBase;
+        localStorage.setItem('vamp_public_base_url', sharedBase);
+
+        const data = await api(`/api/rooms?base_url=${encodeURIComponent(sharedBase)}`, 'POST', {});
+        state.roomCode = data.room_code;
+        state.hostToken = data.host_token;
+        localStorage.setItem('vamp_host_token', state.hostToken);
+
+        const joined = await api(`/api/rooms/${state.roomCode}/join`, 'POST', {});
+        state.sessionToken = joined.session_token;
+        localStorage.setItem('vamp_session_token', state.sessionToken);
+        state.room = joined.room;
+
+        history.replaceState({}, '', `/?room=${state.roomCode}`);
+        setMsg('topMsg', `Sala creada: ${state.roomCode}`, true);
+        renderAll();
+        connectWs();
+      } catch (e) {
+        setMsg('topMsg', e.message);
+      }
+    };
+
+    el('btnJoin').onclick = async () => {
+      const code = (el('joinCode').value || '').trim().toUpperCase();
+      if (!code) return setMsg('topMsg', 'Introduce un código de sala');
+      try {
+        state.roomCode = code;
+        state.hostToken = '';
+        localStorage.removeItem('vamp_host_token');
+
+        const joined = await api(`/api/rooms/${code}/join`, 'POST', {});
+        state.sessionToken = joined.session_token;
+        localStorage.setItem('vamp_session_token', state.sessionToken);
+        state.room = joined.room;
+
+        history.replaceState({}, '', `/?room=${state.roomCode}`);
+        setMsg('topMsg', `Conectado a sala ${code}`, true);
+        renderAll();
+        connectWs();
+      } catch (e) {
+        setMsg('topMsg', e.message);
+      }
+    };
+
+    el('btnSavePlayers').onclick = async () => {
+      const names = (el('playersText').value || '')
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean);
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/players/setup`, 'POST', {
+          host_token: state.hostToken,
+          names,
+        });
+        state.room = data.room;
+        setMsg('hostMsg', 'Jugadores guardados', true);
+        renderAll();
+      } catch (e) {
+        setMsg('hostMsg', e.message);
+      }
+    };
+
+    el('btnCollect').onclick = async () => {
+      const n = Number(el('challengeCount').value || '0');
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/settings/challenge-count`, 'POST', {
+          host_token: state.hostToken,
+          challenge_count: n,
+        });
+        state.room = data.room;
+        setMsg('hostMsg', 'Recogida de pruebas iniciada', true);
+        renderAll();
+      } catch (e) {
+        setMsg('hostMsg', e.message);
+      }
+    };
+
+    el('btnSendChallenges').onclick = async () => {
+      const list = (el('myChallenges').value || '')
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean);
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/challenges`, 'POST', {
+          session_token: state.sessionToken,
+          challenges: list,
+        });
+        state.room = data.room;
+        state.me = data.me;
+        setMsg('challengesMsg', 'Pruebas enviadas', true);
+        renderAll();
+      } catch (e) {
+        setMsg('challengesMsg', e.message);
+      }
+    };
+
+    el('btnStartGame').onclick = async () => {
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/start`, 'POST', {
+          host_token: state.hostToken,
+        });
+        state.room = data.room;
+        setMsg('hostMsg', 'Partida iniciada', true);
+        renderAll();
+      } catch (e) {
+        setMsg('hostMsg', e.message);
+      }
+    };
+
+    el('btnConfirmKill').onclick = async () => {
+      try {
+        const data = await api(`/api/rooms/${state.roomCode}/kill`, 'POST', {
+          session_token: state.sessionToken,
+        });
+        state.room = data.room;
+        state.me = data.me;
+        setMsg('missionMsg', 'Muerte registrada', true);
+        renderAll();
+      } catch (e) {
+        setMsg('missionMsg', e.message);
+      }
+    };
+
+    el('btnRefreshMission').onclick = loadCurrentState;
+
+    (async function init() {
+      if ('serviceWorker' in navigator) {
+        try {
+          await navigator.serviceWorker.register('/static/sw.js');
+        } catch (_) {}
+      }
+
+      const defaultBase = state.publicBaseUrl || location.origin;
+      el('publicBaseUrl').value = defaultBase;
+      updateNetworkHint();
+      el('publicBaseUrl').addEventListener('input', updateNetworkHint);
+
+      if (state.roomCode) {
+        try {
+          if (!state.sessionToken) {
+            const joined = await api(`/api/rooms/${state.roomCode}/join`, 'POST', {});
+            state.sessionToken = joined.session_token;
+            localStorage.setItem('vamp_session_token', state.sessionToken);
+            state.room = joined.room;
+          }
+          await loadCurrentState();
+          renderAll();
+          connectWs();
+        } catch (e) {
+          setMsg('topMsg', e.message);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

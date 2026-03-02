@@ -1,0 +1,18 @@
+{
+  "name": "Vampiro Multiplayer",
+  "short_name": "Vampiro",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ea",
+  "theme_color": "#d65b2f",
+  "description": "Juego multiplayer de Vampiro para moviles.",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
